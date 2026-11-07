@@ -16,6 +16,15 @@ npm start
 
 Gra działa pod adresem `http://localhost:3000`. Aby grać ze znajomymi przez internet, uruchom serwer na hostingu z obsługą Node.js i WebSocketów (np. Render, Railway, Fly.io, VPS). Port ustawia zmienna `PORT`, a plik z profilami i statystykami zmienna `DATA_FILE` (domyślnie `data/db.json`).
 
+### Wdrożenie na Render (za darmo)
+
+1. Wgraj ten folder do repozytorium na GitHubie.
+2. Zaloguj się na [render.com](https://render.com) kontem GitHub.
+3. **New → Blueprint** → wybierz repozytorium → **Apply**. Render sam odczyta plik `render.yaml`.
+4. Po kilku minutach gra działa pod adresem `https://impostor-xxxx.onrender.com` — ten link wysyłasz znajomym.
+
+Na darmowym planie serwer zasypia po ok. 15 min bez ruchu (pierwsze wejście trwa wtedy ~30–60 s), a statystyki online zerują się przy każdym ponownym wdrożeniu. Dołączony `Dockerfile` pozwala wdrożyć grę także na Railway, Fly.io lub własnym serwerze.
+
 Testy (silnik gry + pełna rozgrywka online na 4 klientach):
 
 ```bash
