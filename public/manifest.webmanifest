@@ -1,0 +1,11 @@
+{
+  "name": "IMPOSTOR – gra w skojarzenia",
+  "short_name": "IMPOSTOR",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06070f",
+  "theme_color": "#06070f",
+  "lang": "pl",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

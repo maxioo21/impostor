@@ -1,0 +1,19 @@
+{
+  "name": "impostor",
+  "version": "1.0.0",
+  "description": "IMPOSTOR – gra towarzyska online i na jednym telefonie",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node test/engine.test.js && node test/online.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}

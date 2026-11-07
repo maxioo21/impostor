@@ -1,0 +1,12 @@
+# Render Blueprint – wdrożenie jednym kliknięciem (Render → New → Blueprint → wybierz repozytorium)
+services:
+  - type: web
+    name: impostor
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
