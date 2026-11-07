@@ -4,6 +4,12 @@ Gra towarzyska w skojarzenia: wszyscy znają tajne słowo — prawie wszyscy.
 
 ## ⬇️ Pobierz grę
 
+### 📱 Telefon (Android i iPhone) – bez pobierania plików i bez zezwoleń
+Otwórz na telefonie **https://maxioo21.github.io/impostor/** i dotknij **„Zainstaluj na telefonie”**.
+Ikona IMPOSTOR pojawi się na ekranie głównym, a gra będzie działać bez internetu.
+
+### Pozostałe wersje
+
 | | Plik | |
 |---|---|---|
 | 🪟 **Windows 10/11** | [**IMPOSTOR-Setup.exe**](https://github.com/maxioo21/impostor/raw/main/pobierz/IMPOSTOR-Setup.exe) (23 MB) | instalator – ikona na pulpicie i w menu Start |

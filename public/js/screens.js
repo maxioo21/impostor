@@ -10,7 +10,11 @@ const E = window.ImpostorEngine;
 const W = window.ImpostorWords;
 const { icon, avatar } = U;
 const SA = !!window.IMPOSTOR_STANDALONE;
-const APP = !!window.IMPOSTOR_APP;
+const APP = !!(window.IMPOSTOR_APP || window.IMPOSTOR_PWA);
+const isStandalone = () => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; } };
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = () => /android/i.test(navigator.userAgent);
+const canOfferInstall = () => !window.IMPOSTOR_APP && (!window.IMPOSTOR_STANDALONE || window.IMPOSTOR_PWA) && !isStandalone() && (window.__installPrompt || isIOS() || isAndroid());
 
 /* ================= MENU GŁÓWNE ================= */
 defineScreen('home', () => {
@@ -31,6 +35,7 @@ defineScreen('home', () => {
     <div class="tagline">Wszyscy znają słowo. <b>Prawie wszyscy.</b></div>
   </div>
   ${roomBanner}${localBanner}
+  ${canOfferInstall() ? `<button class="resume-banner" data-action="installApp">${icon('phone')}<div class="grow"><b>Zainstaluj na telefonie</b><span class="small muted">Ikona na ekranie głównym, działa bez internetu</span></div>${icon('plus', 'sm')}</button>` : ''}
   <div class="stack" style="gap:12px;margin-top:6px">
     <button class="btn block xl pulse" data-action="openPlay">${icon('play')} Graj</button>
     ${SA ? '' : `<button class="btn red block md" data-action="goJoin">${icon('login')} Dołącz do pokoju</button>`}
@@ -84,6 +89,23 @@ act({
   },
   playOnline() { closeModal(); ensureNick(() => createRoom()); },
   playLocal() { closeModal(); openLocalSetup(); },
+  async installApp() {
+    const p = window.__installPrompt;
+    if (p) {
+      p.prompt();
+      try { const r = await p.userChoice; if (r && r.outcome === 'accepted') toast('Gra zainstalowana! Ikona IMPOSTOR jest na ekranie głównym.', 'success'); } catch { /* */ }
+      window.__installPrompt = null;
+      rerender();
+      return;
+    }
+    const steps = isIOS()
+      ? `<li>Dotknij przycisku <b>Udostępnij</b> (kwadrat ze strzałką) na dole Safari.</li><li>Wybierz <b>Do ekranu początkowego</b>.</li><li>Dotknij <b>Dodaj</b>.</li>`
+      : `<li>Dotknij menu przeglądarki <b>⋮</b> (prawy górny róg).</li><li>Wybierz <b>Zainstaluj aplikację</b> lub <b>Dodaj do ekranu głównego</b>.</li><li>Potwierdź <b>Zainstaluj</b>.</li>`;
+    showModal(() => `<div class="sheet-head"><h2>Zainstaluj IMPOSTOR</h2><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div>
+      <div class="stack"><ol class="rules" style="margin:0;padding-left:20px;line-height:1.7">${steps}</ol>
+      <p class="small muted" style="margin:0">Gra pojawi się z ikoną na ekranie głównym i będzie działać bez internetu. Nie trzeba niczego pobierać ani zezwalać.</p>
+      <button class="btn block" data-action="closeModal">${icon('check')} Rozumiem</button></div>`);
+  },
   playLan() {
     closeModal();
     setTimeout(() => showModal(() => `<div class="sheet-head"><h2>Gra online przez Wi-Fi</h2><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div>

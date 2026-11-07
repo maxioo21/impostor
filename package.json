@@ -1,7 +1,7 @@
 {
   "name": "impostor",
   "version": "1.0.0",
-  "description": "IMPOSTOR \u2013 gra towarzyska online i na jednym telefonie",
+  "description": "IMPOSTOR – gra towarzyska online i na jednym telefonie",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
@@ -9,7 +9,8 @@
     "build:standalone": "node scripts/build-standalone.js",
     "build:android": "bash android/build.sh",
     "build:desktop": "node desktop/build.js",
-    "build:installer": "node desktop/build.js && makensis -V2 desktop/installer.nsi"
+    "build:installer": "node desktop/build.js && makensis -V2 desktop/installer.nsi",
+    "build:pwa": "node scripts/build-standalone.js --pwa docs/index.html"
   },
   "engines": {
     "node": ">=18"

@@ -91,9 +91,12 @@ window.addEventListener('popstate', () => { closeModal(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && O.socket && !O.socket.connected) O.socket.connect();
 });
-if ('serviceWorker' in navigator && location.protocol !== 'file:' && !window.IMPOSTOR_STANDALONE) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+if ('serviceWorker' in navigator && location.protocol !== 'file:' && (!window.IMPOSTOR_STANDALONE || window.IMPOSTOR_PWA)) {
+  window.addEventListener('load', () => navigator.serviceWorker.register(window.IMPOSTOR_PWA ? './sw.js' : '/sw.js').catch(() => {}));
 }
+/* Instalacja jako aplikacja (PWA): przycisk „Zainstaluj” zamiast pobierania plików */
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); window.__installPrompt = e; if (S.screen === 'home') rerender(); });
+window.addEventListener('appinstalled', () => { window.__installPrompt = null; if (S.screen === 'home') rerender(); });
 /* Przycisk „Wstecz” w aplikacji na Androida */
 window.impostorBack = () => {
   if (isModalOpen()) { closeModal(); return true; }

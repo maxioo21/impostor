@@ -9,8 +9,11 @@ const path = require('path');
 const esbuild = require('esbuild');
 
 const root = path.join(__dirname, '..');
-const APP = process.argv.includes('--app');
-const outArg = APP ? process.argv[process.argv.indexOf('--app') + 1] : null;
+const PWA = process.argv.includes('--pwa');
+const APP = PWA || process.argv.includes('--app'); // obie wersje mają czcionki w plikach obok
+const flagArg = PWA ? '--pwa' : '--app';
+const outArg = APP ? process.argv[process.argv.indexOf(flagArg) + 1] : null;
+const VERSION = require(path.join(__dirname, '..', 'package.json')).version + '-' + Date.now().toString(36);
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 
 const bundle = esbuild.buildSync({
@@ -44,11 +47,48 @@ ${extraCss}</style>
 <div id="modal-root"></div>
 <div id="toast-root"></div>
 <canvas id="fx-canvas" aria-hidden="true"></canvas>
-<script>window.IMPOSTOR_STANDALONE=true;${APP ? 'window.IMPOSTOR_APP=true;' : ''}</script>
+<script>window.IMPOSTOR_STANDALONE=true;${PWA ? 'window.IMPOSTOR_PWA=true;' : APP ? 'window.IMPOSTOR_APP=true;' : ''}</script>
 ${scripts.map(s => `<script>${s}</script>`).join('\n')}
 <script>${bundle}</script>
 `;
 const out = outArg ? path.resolve(outArg) : path.join(root, 'dist/impostor-standalone.html');
 fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, APP ? `<!doctype html><html lang="pl"><head></head><body>${html}</body></html>` : html);
+const pwaHead = PWA ? `<meta name="theme-color" content="#06070f"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="IMPOSTOR">` : '';
+fs.writeFileSync(out, APP ? `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">${pwaHead}</head><body>${html}</body></html>` : html);
+if (PWA) writePwaFiles(path.dirname(out));
+
+/** Pliki aplikacji instalowanej z przeglądarki: manifest, ikony, czcionki, service worker (offline). */
+function writePwaFiles(dir) {
+  const fdir = path.join(dir, 'fonts');
+  fs.mkdirSync(fdir, { recursive: true });
+  for (const f of fs.readdirSync(path.join(root, 'public/fonts'))) fs.copyFileSync(path.join(root, 'public/fonts', f), path.join(fdir, f));
+  fs.copyFileSync(path.join(root, 'public/icon.svg'), path.join(dir, 'icon.svg'));
+  for (const f of ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png']) fs.copyFileSync(path.join(root, 'scripts/pwa-icons', f), path.join(dir, f));
+  fs.writeFileSync(path.join(dir, 'manifest.webmanifest'), JSON.stringify({
+    id: './', name: 'IMPOSTOR – gra w skojarzenia', short_name: 'IMPOSTOR', description: 'Gra towarzyska w skojarzenia. Kto nie zna tajnego słowa?',
+    lang: 'pl', start_url: './', scope: './', display: 'standalone', orientation: 'portrait',
+    background_color: '#04050c', theme_color: '#06070f', categories: ['games', 'entertainment'],
+    icons: [
+      { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+    ]
+  }, null, 2));
+  const files = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png']
+    .concat(fs.readdirSync(fdir).map(f => 'fonts/' + f));
+  fs.writeFileSync(path.join(dir, 'sw.js'), `/* IMPOSTOR – praca offline (wersja ${VERSION}) */
+const CACHE = 'impostor-${VERSION}';
+const FILES = ${JSON.stringify(files)};
+self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request).then(r => {
+    if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+    return r;
+  }).catch(() => caches.match('index.html'))));
+});
+`);
+  fs.writeFileSync(path.join(dir, '.nojekyll'), '');
+}
 console.log('Zapisano', path.relative(root, out), Math.round(html.length / 1024) + ' KB');
