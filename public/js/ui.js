@@ -74,6 +74,8 @@ export function avatar(i, size, opts) {
   return `<div class="av ${size || 'md'} ${o.off ? 'off' : ''}" style="--a1:${g[0]};--a2:${g[1]}">${AV_EMOJI[i]}${dot}</div>`;
 }
 
+export const botBadge = p => (p && p.bot ? '<span class="badge bot">🤖 bot</span>' : '');
+
 export function logoMark() {
   return `<svg class="logo-mark" viewBox="0 0 128 128" aria-hidden="true">
     <defs>
@@ -141,10 +143,12 @@ export function settingsPanel(s, o) {
   return `
   <div class="opt-block"><div class="lbl">Tryb gry</div><div class="mode-grid">${modes}</div>
     ${s.mode === 'chaos' ? `<div class="small muted">Tryb Chaos wymaga min. 4 graczy (Impostor, Detektyw, Błazen i gracze).</div>` : ''}</div>
+  <div class="opt-row"><div class="lbl">Liczba rund<small>Ile razy każdy wpisze skojarzenie (1–${E.MAX_ROUNDS})</small></div>
+    <div class="stepper"><button ${dis} data-action="optStep" data-ctx="${ctx}" data-key="rounds" data-delta="-1" ${s.rounds <= 1 ? 'disabled' : ''} aria-label="Mniej rund">${icon('minus', 'sm')}</button><span class="val">${s.rounds}</span><button ${dis} data-action="optStep" data-ctx="${ctx}" data-key="rounds" data-delta="1" ${s.rounds >= E.MAX_ROUNDS ? 'disabled' : ''} aria-label="Więcej rund">${icon('plus', 'sm')}</button></div></div>
+  ${o.hasBots ? `<div class="opt-block"><div class="lbl">Poziom botów</div><div class="seg">${[['easy', 'Łatwe'], ['medium', 'Średnie'], ['hard', 'Trudne']].map(([k, v]) => opt('botLevel', k, v, (s.botLevel || 'medium') === k)).join('')}</div></div>` : ''}
   ${playersRow}
   <div class="opt-row"><div class="lbl">Liczba Impostorów<small>Maks. ${maxImp} przy ${n} graczach</small></div>
     <div class="stepper"><button ${dis} data-action="optStep" data-ctx="${ctx}" data-key="impostors" data-delta="-1" ${imps <= 1 ? 'disabled' : ''}>${icon('minus', 'sm')}</button><span class="val">${imps}</span><button ${dis} data-action="optStep" data-ctx="${ctx}" data-key="impostors" data-delta="1" ${imps >= maxImp ? 'disabled' : ''}>${icon('plus', 'sm')}</button></div></div>
-  <div class="opt-block"><div class="lbl">Liczba rund</div><div class="seg">${[1, 2, 3, 4, 5, 6].map(r => opt('rounds', r, r, s.rounds === r)).join('')}</div></div>
   <div class="opt-block"><div class="lbl">Czas na odpowiedź</div><div class="seg red">${E.ANSWER_TIMES.map(t => opt('answerTime', t, t + 's', s.answerTime === t)).join('')}</div></div>
   <div class="opt-block"><div class="lbl">Kategoria słów</div><div class="cat-grid">${catHtml}</div></div>
   <div class="opt-block"><div class="lbl">Poziom trudności</div><div class="seg">${Object.entries(W.DIFFICULTIES).map(([k, v]) => `<button ${dis || (s.category === 'custom' ? 'disabled' : '')} class="${s.difficulty === k ? 'active' : ''}" data-action="opt" data-ctx="${ctx}" data-key="difficulty" data-val="${k}">${v}</button>`).join('')}</div></div>
@@ -155,7 +159,7 @@ export function settingsPanel(s, o) {
   ${s.tournament ? `<div class="opt-block"><div class="lbl">Liczba gier w turnieju</div><div class="seg">${[3, 5, 7].map(g => opt('tournamentGames', g, g + ' gry', s.tournamentGames === g).replace('7 gry', '7 gier').replace('5 gry', '5 gier')).join('')}</div></div>` : ''}`;
 }
 
-export function settingsSummary(s, playerCount) {
+export function settingsSummary(s, playerCount, hasBots) {
   const m = E.MODES[s.mode];
   const imps = Math.min(s.impostors, E.maxImpostors(Math.max(3, playerCount), s.mode));
   const cat = s.categoryLabel || E.categoryLabel(s);
@@ -163,6 +167,7 @@ export function settingsSummary(s, playerCount) {
     <span class="chip">${m.icon} ${m.name}</span>
     <span class="chip red">${icon('users')} ${imps} ${imps === 1 ? 'Impostor' : 'Impostorów'}</span>
     <span class="chip">${icon('refresh')} ${s.rounds} ${s.rounds === 1 ? 'runda' : s.rounds < 5 ? 'rundy' : 'rund'}</span>
+    ${hasBots ? `<span class="chip">🤖 Boty: ${{ easy: 'łatwe', medium: 'średnie', hard: 'trudne' }[s.botLevel || 'medium']}</span>` : ''}
     <span class="chip">${icon('clock')} ${s.answerTime}s</span>
     <span class="chip">${icon('layers')} ${esc(cat)}</span>
     ${s.category !== 'custom' ? `<span class="chip">${icon('flame')} ${W.DIFFICULTIES[s.difficulty]}</span>` : ''}
@@ -275,7 +280,7 @@ export function board(g, o) {
     }
     return `<div class="brow ${isTurn ? 'turn' : ''} ${p.left ? 'left' : ''}">
       ${avatar(p.avatar, 'sm', { off: p.left || (o.offline && o.offline.has(p.id)) })}
-      <div style="min-width:0"><div class="bname"><span class="ellipsis">${esc(p.name)}</span>${p.id === o.meId ? '<span class="badge me">ty</span>' : ''}${g.phase === 'answers' && answeredNow ? icon('check', 'xs check-ic') : ''}</div>
+      <div style="min-width:0"><div class="bname"><span class="ellipsis">${esc(p.name)}</span>${botBadge(p)}${p.id === o.meId ? '<span class="badge me">ty</span>' : ''}${g.phase === 'answers' && answeredNow ? icon('check', 'xs check-ic') : ''}</div>
       <div class="answers-line">${chips || '<span class="ans empty">—</span>'}</div></div>
     </div>`;
   }).join('');
@@ -291,7 +296,7 @@ export function turnHeader(g, o) {
     ${cur ? `<div class="av-ring">${avatar(cur.avatar, 'md')}</div>` : ''}
     <div class="tc-info">
       <div class="row" style="gap:8px;margin-bottom:4px"><span class="round-pill">${icon('refresh', 'xs')} Runda ${g.round}/${g.rounds}</span></div>
-      <div class="tc-who ellipsis">${mine ? 'Twoja kolej!' : `Kolej: ${esc(cur ? cur.name : '?')}`}</div>
+      <div class="tc-who ellipsis">${mine ? 'Twoja kolej!' : `Kolej: ${esc(cur ? cur.name : '?')}${cur && cur.bot ? ' 🤖' : ''}`}</div>
       <div class="tc-sub">Gracz ${pos + 1} z ${order.length}</div>
     </div>
     ${timer(g.deadline, g.answerTime * 1000, { tick: mine ? 'turn-' + g.round + '-' + g.turnPos : null, local: o.local })}
@@ -313,7 +318,7 @@ export function voteGrid(g, o) {
     <button class="vote-card ${o.selected === p.id ? 'sel' : ''}" style="animation-delay:${i * 0.04}s" data-action="${o.action}" data-id="${esc(p.id)}" ${o.disabled ? 'disabled' : ''}>
       ${icon('target', 'target-ic')}
       ${avatar(p.avatar, 'lg', { off: p.left })}
-      <div class="vn ellipsis">${esc(p.name)}</div>
+      <div class="vn ellipsis">${esc(p.name)}${p.bot ? ' 🤖' : ''}</div>
       <div class="va">${(byPlayer[p.id] || []).map(t => `<span>${esc(t)}</span>`).join('') || '<span>brak odpowiedzi</span>'}</div>
     </button>`).join('')}</div>`;
 }
@@ -407,7 +412,7 @@ export function resultsView(r, o) {
     <div class="card glow-red reveal-item" style="${d()}">
       <div class="card-title">${icon('eye')} ${imps.length > 1 ? 'Impostorami byli' : 'Impostorem był(a)'}</div>
       <div class="imp-list">${imps.map(p => `<div class="imp-item">${avatar(p.avatar, 'lg')}<div class="nm">${esc(p.name)}</div><span class="badge red">${esc(p.roleName)}</span></div>`).join('')}</div>
-      ${r.guess != null && acc && acc.team === 'impostors' ? `<div class="divider" style="margin:14px 0 10px"></div><div class="row center small">Ostatnia szansa: <b>„${esc(r.guess || '—')}”</b> ${r.guessCorrect ? '<span class="badge ready">trafione</span>' : '<span class="badge red">pudło</span>'}</div>` : ''}
+      ${r.guess != null && acc && acc.team === 'impostors' ? `<div class="divider" style="margin:14px 0 10px"></div><div class="row center small">Ostatnia szansa: <b>„${esc(r.guess || '—')}”</b> ${r.guessCorrect ? (r.guessExact === false ? `<span class="badge ready">trafione mimo literówki</span>` : '<span class="badge ready">trafione</span>') : '<span class="badge red">pudło</span>'}</div>` : ''}
     </div>
 
     <div class="card reveal-item" style="${d()}">
@@ -424,7 +429,7 @@ export function resultsView(r, o) {
 
     <div class="card reveal-item" style="${d()}">
       <div class="card-title">${icon('users')} Role wszystkich graczy</div>
-      <div class="role-list">${r.players.map(p => `<div class="role-item t-${p.team}">${avatar(p.avatar, 'sm')}<div style="min-width:0"><div class="ri-n ellipsis">${esc(p.name)} ${r.winners.includes(p.id) ? '🏅' : ''}</div><div class="ri-r">${esc(p.roleName)}</div></div></div>`).join('')}</div>
+      <div class="role-list">${r.players.map(p => `<div class="role-item t-${p.team}">${avatar(p.avatar, 'sm')}<div style="min-width:0"><div class="ri-n ellipsis">${esc(p.name)}${p.bot ? ' 🤖' : ''} ${r.winners.includes(p.id) ? '🏅' : ''}</div><div class="ri-r">${esc(p.roleName)}</div></div></div>`).join('')}</div>
     </div>
 
     <div class="card reveal-item" style="${d()}">

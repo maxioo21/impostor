@@ -26,6 +26,7 @@ export function resumeLocal() {
     L.game = E.GameCore.fromJSON(d.game, gameOptions());
     L.ui = freshUi(); L.results = null; L.lastPhase = L.game.phase;
     go('local');
+    L.game.resume();
   } catch (e) {
     console.error(e);
     store.del('localSave');
@@ -49,13 +50,15 @@ export function historyEntry(r, type, meId) {
 
 /* ---------- konfiguracja ---------- */
 function randAv() { return Math.floor(Math.random() * U.AVATAR_COUNT); }
-function newPlayer(name, av) { return { id: 'l' + E.randomId(8), name, avatar: av == null ? randAv() : av }; }
+function newPlayer(name, av, bot) { return { id: (bot ? 'b' : 'l') + E.randomId(8), name, avatar: av == null ? randAv() : av, bot: !!bot }; }
+function newBot() { const b = window.ImpostorBots.makeBot(L.setup.players.map(p => p.name)); return newPlayer(b.name, b.avatar, true); }
+const solo = g => g.humanIds().length === 1;
 export function openLocalSetup() {
   if (!L.setup) {
     const group = store.get('localGroup', null);
     const settings = E.sanitizeSettings(store.get('lastSettings', {}));
     let players;
-    if (Array.isArray(group) && group.length >= 3) players = group.map(p => newPlayer(p.name, p.avatar));
+    if (Array.isArray(group) && group.length >= 3) players = group.map(p => newPlayer(p.name, p.avatar, p.bot));
     else {
       players = [newPlayer(profile.name || 'Gracz 1', profile.avatar)];
       for (let i = 2; i <= 4; i++) players.push(newPlayer('Gracz ' + i));
@@ -76,6 +79,7 @@ export function applyLocalSettings(patch) {
 defineScreen('local-setup', () => {
   const st = L.setup;
   const n = st.players.length;
+  const bots = st.players.filter(p => p.bot).length;
   return `
   <div class="topbar">
     <button class="icon-btn" data-action="goHome" aria-label="Wróć">${icon('back')}</button>
@@ -83,20 +87,25 @@ defineScreen('local-setup', () => {
     <span class="spacer-44"></span>
   </div>
   <div class="card">
-    <div class="card-title">${icon('users')} Gracze (${n})</div>
+    <div class="card-title">${icon('users')} Gracze (${n})${bots ? `<span class="muted" style="margin-left:auto;font-family:var(--font);letter-spacing:0;text-transform:none">w tym boty: ${bots}</span>` : ''}</div>
     <div class="plist">
       ${st.players.map((p, i) => `
         <div class="prow" style="animation-delay:${i * 0.03}s">
           <button data-action="lpAvatar" data-id="${p.id}" aria-label="Zmień awatar">${avatar(p.avatar, 'md')}</button>
           <input class="input" id="lp-${p.id}" value="${esc(p.name)}" maxlength="16" placeholder="Imię gracza ${i + 1}" data-input="lpName" data-id="${p.id}" autocomplete="off">
+          ${p.bot ? U.botBadge(p) : ''}
           <button class="icon-btn sm ghost danger" data-action="lpRemove" data-id="${p.id}" ${n <= 3 ? 'disabled' : ''} aria-label="Usuń gracza">${icon('x', 'sm')}</button>
         </div>`).join('')}
     </div>
-    <button class="btn ghost block md" style="margin-top:12px" data-action="lpCount" data-delta="1" ${n >= 20 ? 'disabled' : ''}>${icon('userPlus')} Dodaj gracza</button>
+    <div class="btn-grid" style="margin-top:12px">
+      <button class="btn ghost md" data-action="lpCount" data-delta="1" ${n >= 20 ? 'disabled' : ''}>${icon('userPlus')} Gracz</button>
+      <button class="btn ghost md" data-action="lpAddBot" ${n >= 20 ? 'disabled' : ''}>🤖 Bot</button>
+    </div>
+    <p class="small muted" style="margin:10px 0 0">Boty same wpisują skojarzenia i głosują. Możesz grać nawet sam przeciwko botom.</p>
   </div>
   <div class="card">
     <div class="card-title">${icon('sliders')} Ustawienia gry</div>
-    ${U.settingsPanel(st.settings, { ctx: 'local', editable: true, playerCount: n })}
+    ${U.settingsPanel(st.settings, { ctx: 'local', editable: true, playerCount: n, hasBots: bots > 0 })}
   </div>
   <div class="sticky-bottom">
     <button class="btn block xl pulse" data-action="localStart">${icon('play')} Start</button>
@@ -112,6 +121,7 @@ act({
     if (d < 0 && pl.length > 3) pl.pop();
     rerender();
   },
+  lpAddBot() { if (L.setup.players.length < 20) { L.setup.players.push(newBot()); rerender(); } },
   lpRemove(el) {
     if (L.setup.players.length <= 3) return;
     L.setup.players = L.setup.players.filter(p => p.id !== el.dataset.id);
@@ -140,7 +150,8 @@ act({
     });
     const min = E.minPlayersFor(st.settings.mode);
     if (st.players.length < min) return toast(`Ten tryb wymaga co najmniej ${min} graczy.`, 'error');
-    store.set('localGroup', st.players.map(p => ({ name: p.name, avatar: p.avatar })));
+    if (!st.players.some(p => !p.bot)) return toast('Dodaj co najmniej jednego gracza-człowieka.', 'error');
+    store.set('localGroup', st.players.map(p => ({ name: p.name, avatar: p.avatar, bot: !!p.bot })));
     startGame();
   }
 });
@@ -159,7 +170,7 @@ function startGame() {
   } else L.tournament = null;
   if (L.game) L.game.destroy();
   const used = store.get('usedWords', []);
-  L.game = new E.GameCore({ players: st.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar })), settings: st.settings, used, options: gameOptions() });
+  L.game = new E.GameCore({ players: st.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, bot: !!p.bot })), settings: st.settings, used, options: gameOptions() });
   used.push(L.game.word.word);
   store.set('usedWords', used.slice(-150));
   L.ui = freshUi();
@@ -187,6 +198,7 @@ function onGameEnd(r) {
   // statystyki lokalne według imion
   const ls = store.get('localStats', {});
   for (const p of r.players) {
+    if (p.bot) continue;
     const key = p.name.toLowerCase();
     const s = Object.assign(emptyLocalStats(), (ls[key] || {}).stats);
     applyResultToStats(s, r, p.id);
@@ -242,9 +254,11 @@ function viewReveal(g) {
   const next = g.nextRevealId();
   if (!next) return topbar('Role');
   syncStage(next);
+  if (solo(g)) L.ui.stage = 'private';
   const p = g.player(next);
-  const total = g.activeIds().length;
-  const idx = g.revealed.length;
+  const humans = g.humanIds();
+  const total = humans.length;
+  const idx = humans.filter(id => g.revealed.includes(id)).length;
   if (L.ui.stage === 'handoff') {
     return topbar('Losowanie ról') + U.handoff({
       dots: U.progressDots(total, idx, idx), kicker: `Gracz ${idx + 1} z ${total} — przekaż telefon`,
@@ -266,7 +280,14 @@ function viewAnswers(g) {
   const cur = g.currentPlayerId();
   const p = g.player(cur);
   const boardCard = `<div class="card tight"><div class="card-title">${icon('list')} Tablica skojarzeń</div>${U.board(pub, {})}</div>`;
-  if (g.waiting) {
+  if (g.isBot(cur)) {
+    return topbar(`Runda ${g.round}/${g.settings.rounds}`) + `
+      ${U.turnHeader(pub, { mine: false, local: true })}
+      <div class="card tight bot-thinking">${avatar(p.avatar, 'md')}<div class="grow"><b>${esc(p.name)}</b> wymyśla skojarzenie <span class="dots"><i></i><i></i><i></i></span><br><span class="small muted">Bot odpowie sam – poczekaj chwilę.</span></div></div>
+      ${boardCard}`;
+  }
+  if (g.waiting && solo(g)) setTimeout(() => { if (L.game === g && g.waiting && g.currentPlayerId() === cur) g.startTimer(); });
+  else if (g.waiting) {
     return topbar(`Runda ${g.round}/${g.settings.rounds}`) + U.handoff({
       dots: U.progressDots(pub.order.length, g.turnPos, g.turnPos),
       kicker: `Runda ${g.round} z ${g.settings.rounds} · przekaż telefon`, name: p.name, avatar: p.avatar,
@@ -288,16 +309,20 @@ function viewAnswers(g) {
 }
 
 function votingOrderNext(g) {
-  const pending = new Set(g.pendingVoters());
+  const pending = new Set(g.pendingVoters().filter(id => !g.isBot(id)));
   const p = L.setup.players.find(x => pending.has(x.id));
-  return p ? p.id : g.pendingVoters()[0];
+  return p ? p.id : [...pending][0] || null;
 }
 
 function viewVoting(g) {
   const pub = g.publicState();
   const next = votingOrderNext(g);
-  if (!next) return topbar('Głosowanie');
+  if (!next) {
+    return topbar(g.voteRound === 2 ? 'Dogrywka' : 'Głosowanie') + `
+      <div class="card big-state"><div class="bs-ic">🤖</div><h2>Boty głosują…</h2><p>Za chwilę poznacie wyniki.</p>${U.votedStrip(pub)}</div>`;
+  }
   syncStage(next + ':' + g.voteRound);
+  if (solo(g)) L.ui.stage = 'private';
   const p = g.player(next);
   const voters = g.activeIds().filter(id => g.eligibleTargets(id).length > 0);
   const done = Object.keys(g.votes).length;
@@ -319,7 +344,17 @@ function viewLastChance(g) {
   const p = g.player(g.accusedId);
   const role = g.roles[g.accusedId];
   const roleName = E.ROLES[role].name;
-  if (g.waiting) {
+  if (g.isBot(g.accusedId)) {
+    return topbar('Ostatnia szansa') + `
+      <div class="card glow-red big-state">
+        <div class="row" style="gap:16px">${avatar(p.avatar, 'lg')}${U.timer(g.deadline, 30000, { local: true })}</div>
+        <h2>${esc(p.name)} to ${esc(roleName)}!</h2>
+        <p>Bot próbuje odgadnąć tajne słowo <span class="bot-thinking" style="display:inline-flex"><span class="dots"><i></i><i></i><i></i></span></span></p>
+      </div>
+      <div class="card tight"><div class="card-title">${icon('list')} Skojarzenia</div>${U.board(g.publicState(), { showAll: true })}</div>`;
+  }
+  if (g.waiting && solo(g)) setTimeout(() => { if (L.game === g && g.waiting) g.startTimer(); });
+  else if (g.waiting) {
     return topbar('Ostatnia szansa') + U.handoff({
       kicker: 'Zdemaskowano!', name: p.name, avatar: p.avatar,
       text: `<b style="color:#ff6b7a">${esc(p.name)} to ${esc(roleName)}!</b><br>Ostatnia szansa: przekaż telefon tej osobie. Jeśli odgadnie tajne słowo w 30 sekund — Impostor wygrywa.`,

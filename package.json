@@ -5,7 +5,7 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/engine.test.js && node test/online.test.js",
+    "test": "node test/engine.test.js && node test/bots.test.js && node test/online.test.js && node test/online-bots.test.js",
     "build:standalone": "node scripts/build-standalone.js",
     "build:android": "bash android/build.sh",
     "build:desktop": "node desktop/build.js",

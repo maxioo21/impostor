@@ -269,7 +269,7 @@ defineScreen('rules', () => `
       <li><b>Losowanie ról</b> — każdy prywatnie sprawdza swoją kartę.</li>
       <li><b>Skojarzenia</b> — w każdej rundzie gracze po kolei wpisują jedno słowo lub krótkie skojarzenie. Czas jest ograniczony, a wysłanej odpowiedzi nie da się zmienić.</li>
       <li><b>Głosowanie</b> — każdy tajnie wskazuje Impostora. Nie można głosować na siebie. Przy remisie odbywa się dogrywka.</li>
-      <li><b>Ostatnia szansa</b> — zdemaskowany Impostor może odgadnąć tajne słowo. Jeśli trafi — wygrywa!</li>
+      <li><b>Ostatnia szansa</b> — zdemaskowany Impostor może odgadnąć tajne słowo. Jeśli trafi — wygrywa! Literówki i błędy ortograficzne (np. „żułw”, „spagetti”) są zaliczane, ale tylko gdy wiadomo, o jakie słowo chodziło — jeśli wpis pasuje równie dobrze do innego słowa, nie liczy się.</li>
       <li><b>Wyniki</b> — wygrywają gracze, jeśli złapią Impostora, który nie odgadnie słowa. Jeśli wytypują niewinną osobę — wygrywa Impostor.</li>
     </ol>
   </div>
@@ -277,6 +277,7 @@ defineScreen('rules', () => `
     <h3>${icon('layers')} Tryby gry</h3>
     <ul>${Object.values(E.MODES).map(m => `<li><b>${m.icon} ${m.name}</b> — ${m.desc}</li>`).join('')}</ul>
     <p><b>Detektyw</b> raz w grze sprawdza, czy wybrana osoba jest Impostorem. <b>Błazen</b> zna słowo, ale wygrywa samodzielnie, jeśli zostanie wytypowany.</p>
+    <p><b>Boty</b> — możesz dodać graczy komputerowych (także grać sam przeciwko nim). Boty wpisują skojarzenia, głosują, a jako Impostor próbują odgadnąć słowo z odpowiedzi innych. Poziom botów ustawisz w ustawieniach gry.</p>
     <p><b>Turniej</b> — seria gier z punktacją: wygrana Impostora +3 pkt, wygrana graczy +2 pkt, wygrana Błazna +4 pkt, trafny głos +1 pkt.</p>
   </div>
   <div class="card rules">

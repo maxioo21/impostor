@@ -4,9 +4,9 @@
  * oraz swój prywatny widok (rolę). W trybie lokalnym działa w przeglądarce.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./words.js'));
-  else root.ImpostorEngine = factory(root.ImpostorWords);
-})(typeof self !== 'undefined' ? self : this, function (WORDS) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./words.js'), () => require('./bots.js'));
+  else root.ImpostorEngine = factory(root.ImpostorWords, () => root.ImpostorBots);
+})(typeof self !== 'undefined' ? self : this, function (WORDS, getBots) {
   'use strict';
 
   const MIN_PLAYERS = 3;
@@ -14,6 +14,7 @@
   const ANSWER_TIMES = [15, 30, 45, 60];
   const MAX_ANSWER_LEN = 30;
   const MAX_GUESS_LEN = 40;
+  const MAX_ROUNDS = 10;
 
   const MODES = {
     classic: { name: 'Klasyczny', icon: '🎭', desc: 'Impostor nie zna tajnego słowa. Wszyscy pozostali dostają identyczne hasło.' },
@@ -42,6 +43,7 @@
     mode: 'classic',
     tournament: false,
     tournamentGames: 3,
+    botLevel: 'medium',
     custom: null // { name, words: [{word, similar}] } gdy category === 'custom'
   };
 
@@ -105,15 +107,76 @@
     }
     return prev[b.length];
   }
-  function isGuessCorrect(guess, word) {
-    const g = normalize(guess);
-    const w = normalize(word);
-    if (!g || !w) return false;
-    if (g === w) return true;
-    const d = levenshtein(g, w);
-    if (w.length >= 5 && d <= 1) return true;
-    if (w.length >= 9 && d <= 2) return true;
-    return false;
+  /**
+   * Zapis „fonetyczny”: ujednolica typowe błędy ortograficzne (ó/u, rz/ż, ch/h, ą/om, ę/em,
+   * brak polskich znaków, podwójne litery, zapożyczenia: ph/f, v/w, x/ks, y/i…).
+   */
+  function phonetic(s) {
+    let t = String(s || '').toLowerCase()
+      .replace(/ó/g, 'u').replace(/rz/g, 'z').replace(/[żź]/g, 'z').replace(/ch/g, 'h')
+      .replace(/ą/g, 'on').replace(/ę/g, 'en').replace(/ł/g, 'l').replace(/ś/g, 's').replace(/ć/g, 'c').replace(/ń/g, 'n');
+    t = normalize(t)
+      .replace(/ph/g, 'f').replace(/th/g, 't').replace(/gh/g, 'g').replace(/sh/g, 'sz').replace(/ck/g, 'k')
+      .replace(/qu/g, 'kw').replace(/q/g, 'k').replace(/x/g, 'ks').replace(/v/g, 'w').replace(/y/g, 'i').replace(/oi/g, 'ua')
+      .replace(/om(?=[pb])/g, 'on').replace(/em(?=[pb])/g, 'en');
+    return t.replace(/(.)\1+/g, '$1');
+  }
+  /** Odległość edycyjna, w której pomylenie samogłosek lub podobnie brzmiących spółgłosek kosztuje pół błędu. */
+  const VOWELS = 'aeiou';
+  const SOUND_PAIRS = ['dt', 'bp', 'gk', 'wf', 'zs', 'ui', 'ou'];
+  function subCost(a, b) {
+    if (a === b) return 0;
+    if (VOWELS.includes(a) && VOWELS.includes(b)) return 0.5;
+    return SOUND_PAIRS.some(p => p.includes(a) && p.includes(b)) ? 0.5 : 1;
+  }
+  function softDistance(a, b) {
+    if (a === b) return 0;
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + subCost(a[i - 1], b[j - 1]));
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function allowedErrors(len) { return len <= 3 ? 0 : len <= 5 ? 1 : len <= 8 ? 2 : len <= 12 ? 3 : 4; }
+  /**
+   * Ocena odpowiedzi w ostatniej szansie. Literówki i błędy ortograficzne są zaliczane tylko wtedy,
+   * gdy odpowiedź jest wyraźnie najbliżej hasła – jeśli równie dobrze pasuje do innego znanego słowa
+   * (np. słowa podobnego albo innego hasła z bazy), nie jest zaliczana.
+   * @returns {{ok: boolean, exact: boolean}}
+   */
+  function judgeGuess(guess, word, others) {
+    const gn = normalize(guess), wn = normalize(word);
+    if (!gn || !wn) return { ok: false, exact: false };
+    if (gn === wn) return { ok: true, exact: true };
+    const wk = phonetic(word);
+    // cała odpowiedź albo jej fragment (np. „to chyba pizza”)
+    const toks = String(guess).split(/[\s,.;:!?/-]+/).filter(Boolean);
+    const wordToks = Math.max(1, String(word).split(/\s+/).length);
+    const variants = new Set([phonetic(guess)]);
+    for (let i = 0; i < toks.length; i++) for (let k = 1; k <= wordToks + 1 && i + k <= toks.length; k++) variants.add(phonetic(toks.slice(i, i + k).join(' ')));
+    let best = Infinity, bestV = '';
+    for (const v of variants) { if (!v) continue; const d = softDistance(v, wk); if (d < best) { best = d; bestV = v; } }
+    if (best === 0 && phonetic(guess) === wk) return { ok: true, exact: false };
+    if (best > allowedErrors(wk.length) || best / wk.length > 0.34) return { ok: false, exact: false };
+    if (wk.length <= 5 && bestV[0] !== wk[0]) return { ok: false, exact: false };
+    for (const o of others || []) {
+      if (!o || normalize(o) === wn) continue;
+      if (softDistance(bestV, phonetic(o)) <= best) return { ok: false, exact: false };
+    }
+    return { ok: true, exact: false };
+  }
+  function isGuessCorrect(guess, word, others) { return judgeGuess(guess, word, others).ok; }
+  let allWordsCache = null;
+  function allKnownWords() {
+    if (allWordsCache) return allWordsCache;
+    const set = new Set();
+    for (const c of Object.values(WORDS.CATEGORIES)) for (const d of ['easy', 'medium', 'hard']) for (const e of c[d]) {
+      const p = WORDS.parse(e); set.add(p.word); if (p.similar) set.add(p.similar);
+    }
+    allWordsCache = [...set];
+    return allWordsCache;
   }
   /** Czy odpowiedź zdradza słowo gracza (zawiera je wprost). */
   function revealsWord(answer, word) {
@@ -159,7 +222,8 @@
     out.maxPlayers = clampInt(s.maxPlayers, MIN_PLAYERS, MAX_PLAYERS, b.maxPlayers);
     out.mode = MODES[s.mode] ? s.mode : 'classic';
     out.impostors = clampInt(s.impostors, 1, 9, 1);
-    out.rounds = clampInt(s.rounds, 1, 6, 3);
+    out.rounds = clampInt(s.rounds, 1, MAX_ROUNDS, 3);
+    out.botLevel = ['easy', 'medium', 'hard'].includes(s.botLevel) ? s.botLevel : 'medium';
     out.answerTime = ANSWER_TIMES.includes(+s.answerTime) ? +s.answerTime : 30;
     out.difficulty = WORDS.DIFFICULTIES[s.difficulty] ? s.difficulty : 'medium';
     out.impostorHint = !!s.impostorHint;
@@ -235,7 +299,7 @@
   /* =================================================================== */
   const STATE_KEYS = ['id', 'players', 'settings', 'mode', 'word', 'roles', 'order', 'round', 'turnPos', 'phase',
     'deadline', 'waiting', 'answers', 'revealed', 'detect', 'votes', 'voteRound', 'candidates', 'firstVotes',
-    'firstCounts', 'runoffVotes', 'runoffCounts', 'accusedId', 'guess', 'guessCorrect', 'results', 'startedAt'];
+    'firstCounts', 'runoffVotes', 'runoffCounts', 'accusedId', 'guess', 'guessCorrect', 'guessExact', 'results', 'startedAt', 'impostorCount'];
 
   class GameCore {
     /**
@@ -245,9 +309,11 @@
      *    revealTimeout, voteTimeout, guessTimeout (ms), onChange(game), onEnd(results) }
      */
     constructor(cfg) {
-      this.o = Object.assign({ manual: false, revealTimeout: 0, voteTimeout: 0, guessTimeout: 30000, onChange() {}, onEnd() {} }, cfg.options || {});
+      this.o = Object.assign({ manual: false, revealTimeout: 0, voteTimeout: 0, guessTimeout: 30000, botDelay: [1800, 4200], onChange() {}, onEnd() {} }, cfg.options || {});
       this._timer = null;
       this._tseq = 0;
+      this._botTimers = [];
+      this._bseq = 0;
       if (cfg.restore) {
         for (const k of STATE_KEYS) this[k] = cfg.restore[k];
         if (this.o.manual && (this.phase === 'answers' || this.phase === 'lastchance')) { this.waiting = true; this.deadline = null; }
@@ -256,7 +322,7 @@
       this.id = randomId(12);
       this.settings = sanitizeSettings(cfg.settings);
       this.mode = this.settings.mode;
-      this.players = cfg.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, left: false }));
+      this.players = cfg.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, left: false, bot: !!p.bot }));
       this.word = pickWord(this.settings, cfg.used);
       this.roles = {};
       this.order = [];
@@ -290,7 +356,49 @@
       this._timer = setTimeout(() => { if (seq === this._tseq) fn(); }, ms);
     }
     _clear() { if (this._timer) clearTimeout(this._timer); this._timer = null; this._tseq++; }
-    destroy() { this._clear(); this.o.onChange = () => {}; this.o.onEnd = () => {}; }
+    destroy() { this._clear(); this._botClear(); this.o.onChange = () => {}; this.o.onEnd = () => {}; }
+
+    /* ---- boty ---- */
+    isBot(id) { const p = this.player(id); return !!(p && p.bot); }
+    humanIds() { return this.activeIds().filter(id => !this.isBot(id)); }
+    _botDelay(scale) { const [a, b] = this.o.botDelay; return Math.round((a + Math.random() * (b - a)) * (scale || 1)); }
+    _botSet(ms, fn) {
+      const seq = this._bseq;
+      this._botTimers.push(setTimeout(() => { if (seq === this._bseq) { try { fn(); } catch (e) { console.error('[bot]', e); } } }, ms));
+    }
+    _botClear() { this._bseq++; for (const t of this._botTimers) clearTimeout(t); this._botTimers = []; }
+    _botTurn(id) {
+      const ms = Math.min(this._botDelay(), Math.max(400, this.settings.answerTime * 1000 - 2500));
+      this._botSet(ms, () => {
+        if (this.phase !== 'answers' || this.currentPlayerId() !== id) return;
+        const r = this.submitAnswer(id, getBots().answer(this, id));
+        if (!r.ok) this.timeoutTurn();
+      });
+    }
+    _botVotes() {
+      let k = 0;
+      for (const id of this.activeIds()) {
+        if (!this.isBot(id) || this.votes[id] || !this.eligibleTargets(id).length) continue;
+        this._botSet(this._botDelay(0.6) + (k++) * 450, () => {
+          if (this.phase !== 'voting' || this.votes[id]) return;
+          const t = getBots().vote(this, id);
+          if (t) this.vote(id, t);
+        });
+      }
+    }
+    _botGuess(id) {
+      this._botSet(this._botDelay(1.3), () => {
+        if (this.phase !== 'lastchance' || this.accusedId !== id) return;
+        this.submitGuess(id, getBots().guess(this, id));
+      });
+    }
+    /** Wznawia działania botów po wczytaniu zapisanej gry (tryb lokalny). */
+    resume() {
+      this._botClear();
+      if (this.phase === 'answers') { const id = this.currentPlayerId(); if (id && this.isBot(id)) this._beginTurn(); }
+      else if (this.phase === 'voting') this._botVotes();
+      else if (this.phase === 'lastchance' && this.isBot(this.accusedId)) { this._startGuessTimer(); this._botGuess(this.accusedId); this._emit(); }
+    }
     _emit() { try { this.o.onChange(this); } catch (e) { console.error(e); } }
     player(id) { return this.players.find(p => p.id === id); }
     name(id) { const p = this.player(id); return p ? p.name : '?'; }
@@ -348,7 +456,14 @@
       }
       this.order = order;
       this.phase = 'reveal';
-      this.revealed = [];
+      this.revealed = this.players.filter(p => p.bot).map(p => p.id);
+      for (const p of this.players) {
+        if (p.bot && roles[p.id] === 'detective') {
+          const t = getBots().detectTarget(this, p.id);
+          if (t) this.detect[p.id] = { targetId: t, isImpostor: team(roles[t]) === 'impostors' };
+        }
+      }
+      if (this.activeIds().every(x => this.revealed.includes(x))) { this._emit(); return this._toAnswers(); }
       if (!this.o.manual && this.o.revealTimeout) {
         this.deadline = Date.now() + this.o.revealTimeout;
         this._set(this.o.revealTimeout + 250, () => this._toAnswers());
@@ -395,7 +510,10 @@
         if (this.isLeft(order[this.turnPos])) { this.turnPos++; continue; }
         break;
       }
-      if (this.o.manual) { this.waiting = true; this.deadline = null; }
+      this._botClear();
+      const cur = this.currentPlayerId();
+      if (this.isBot(cur)) { this._startTurnTimer(); this._botTurn(cur); }
+      else if (this.o.manual) { this.waiting = true; this.deadline = null; }
       else this._startTurnTimer();
       this._emit();
     }
@@ -450,6 +568,8 @@
         this.deadline = Date.now() + this.o.voteTimeout;
         this._set(this.o.voteTimeout + 300, () => this._finishVoting());
       } else this.deadline = null;
+      this._botClear();
+      this._botVotes();
       this._emit();
     }
 
@@ -488,7 +608,9 @@
     _toLastChance() {
       this.phase = 'lastchance';
       this.guess = null;
-      if (this.o.manual) { this.waiting = true; this.deadline = null; }
+      this._botClear();
+      if (this.isBot(this.accusedId)) { this._startGuessTimer(); this._botGuess(this.accusedId); }
+      else if (this.o.manual) { this.waiting = true; this.deadline = null; }
       else this._startGuessTimer();
       this._emit();
     }
@@ -509,7 +631,11 @@
       const text = cleanText(raw, MAX_GUESS_LEN);
       if (!text) return { ok: false, error: 'Wpisz tajne słowo.' };
       this.guess = text;
-      this.guessCorrect = isGuessCorrect(text, this.word.word);
+      const others = allKnownWords().concat(this.word.similar ? [this.word.similar] : [],
+        this.settings.custom ? this.settings.custom.words.map(w => w.word) : []);
+      const j = judgeGuess(text, this.word.word, others);
+      this.guessCorrect = j.ok;
+      this.guessExact = j.exact;
       this._finish();
       return { ok: true };
     }
@@ -537,6 +663,7 @@
     /* ---- koniec gry ---- */
     _finish(reason) {
       this._clear();
+      this._botClear();
       const acc = this.accusedId;
       const accRole = acc ? this.roles[acc] : null;
       const accName = acc ? this.name(acc) : '';
@@ -580,7 +707,7 @@
         categoryIcon: this.word.categoryIcon,
         difficulty: this.word.difficulty,
         players: this.players.map(p => ({
-          id: p.id, name: p.name, avatar: p.avatar, left: p.left,
+          id: p.id, name: p.name, avatar: p.avatar, left: p.left, bot: !!p.bot,
           role: this.roles[p.id], roleName: ROLES[this.roles[p.id]].name, team: team(this.roles[p.id])
         })),
         order: this.order,
@@ -592,6 +719,7 @@
         accusedId: acc,
         guess: this.guess,
         guessCorrect: this.guessCorrect,
+        guessExact: !!this.guessExact,
         winner,
         reason: reasonText,
         winners,
@@ -623,7 +751,7 @@
         order: this.phase === 'answers' ? this.roundOrder(this.round) : this.order,
         waiting: this.waiting,
         deadline: this.deadline,
-        players: this.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, left: p.left })),
+        players: this.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, left: p.left, bot: !!p.bot })),
         answers: this.answers,
         revealed: this.revealed.slice(),
         voted: Object.keys(this.votes),
@@ -672,6 +800,7 @@
 
   return {
     GameCore, MODES, ROLES, DEFAULT_SETTINGS, MIN_PLAYERS, MAX_PLAYERS, ANSWER_TIMES, MAX_ANSWER_LEN, MAX_GUESS_LEN,
+    MAX_ROUNDS, judgeGuess, phonetic, allKnownWords,
     sanitizeSettings, sanitizeCustom, categoryLabel, maxImpostors, minPlayersFor, pickWord, team, tally, scoreGame,
     normalize, cleanText, isGuessCorrect, revealsWord, levenshtein, shuffle, randInt, randomId
   };

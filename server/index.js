@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 const E = require('../shared/engine.js');
+const Bots = require('../shared/bots.js');
 const store = require('./store.js');
 
 const PORT = +process.env.PORT || 3000;
@@ -111,7 +112,7 @@ function publicRoom(room) {
     phase: room.game ? room.game.phase : 'lobby',
     settings: publicSettings(room.settings),
     players: [...room.players.values()].map(p => ({
-      id: p.id, name: p.name, avatar: p.avatar, ready: p.ready, connected: p.connected, isHost: p.id === room.hostId
+      id: p.id, name: p.name, avatar: p.avatar, ready: p.ready, connected: p.connected, isHost: p.id === room.hostId, bot: !!p.bot
     })),
     game: room.game ? room.game.publicState() : null,
     tournament: room.tournament,
@@ -141,8 +142,9 @@ function destroyRoom(room) {
   for (const pid of room.players.keys()) if (playerRoom.get(pid) === room.code) playerRoom.delete(pid);
   rooms.delete(room.code);
 }
+const humans = room => [...room.players.values()].filter(p => !p.bot);
 function setHost(room, pid, announce) {
-  if (!room.players.has(pid) || room.hostId === pid) return;
+  if (!room.players.has(pid) || room.hostId === pid || room.players.get(pid).bot) return;
   room.hostId = pid;
   room.players.get(pid).ready = true;
   if (announce) toastRoom(room, `${room.players.get(pid).name} jest teraz hostem pokoju.`);
@@ -161,11 +163,12 @@ function leaveRoom(pid, newHostId) {
   room.players.delete(pid);
   playerRoom.delete(pid);
   if (room.game && room.game.phase !== 'results') room.game.markLeft(pid);
-  if (room.players.size === 0) return destroyRoom(room);
+  if (humans(room).length === 0) return destroyRoom(room);
   if (p) toastRoom(room, `${p.name} opuścił(a) pokój.`);
   if (room.hostId === pid) {
-    const next = (newHostId && room.players.has(newHostId) && newHostId)
-      || ([...room.players.values()].find(x => x.connected) || [...room.players.values()][0]).id;
+    const hs = humans(room);
+    const next = (newHostId && room.players.has(newHostId) && !room.players.get(newHostId).bot && newHostId)
+      || (hs.find(x => x.connected) || hs[0]).id;
     room.hostId = null;
     setHost(room, next, true);
   }
@@ -305,13 +308,29 @@ io.on('connection', socket => {
     return { ok: true };
   });
 
+  on('room:addBot', () => {
+    const room = myRoom();
+    if (!needHost(room)) return { ok: false, error: 'Tylko host może dodawać boty.' };
+    if (room.game) return { ok: false, error: 'Boty można dodawać tylko w lobby.' };
+    if (room.players.size >= Math.min(E.MAX_PLAYERS, room.settings.maxPlayers)) {
+      if (room.settings.maxPlayers < E.MAX_PLAYERS && room.players.size < E.MAX_PLAYERS) room.settings.maxPlayers = room.players.size + 1;
+      else return { ok: false, error: 'Pokój jest pełny.' };
+    }
+    const b = Bots.makeBot([...room.players.values()].map(p => p.name));
+    const id = 'bot_' + crypto.randomBytes(5).toString('hex');
+    room.players.set(id, { id, name: b.name, avatar: b.avatar, ready: true, connected: true, dcAt: null, bot: true });
+    toastRoom(room, `${b.name} dołączył(a) do pokoju.`, 'join');
+    broadcast(room);
+    return { ok: true };
+  });
+
   on('room:kick', d => {
     const room = myRoom();
     if (!needHost(room)) return { ok: false, error: 'Tylko host może usuwać graczy.' };
     if (room.game) return { ok: false, error: 'Graczy można usuwać tylko w lobby.' };
     if (d.playerId === me() || !room.players.has(d.playerId)) return { ok: false, error: 'Nieprawidłowy gracz.' };
     const name = room.players.get(d.playerId).name;
-    room.kicked.add(d.playerId);
+    if (!room.players.get(d.playerId).bot) room.kicked.add(d.playerId);
     room.players.delete(d.playerId);
     playerRoom.delete(d.playerId);
     const s = sockets.get(d.playerId);
@@ -324,7 +343,7 @@ io.on('connection', socket => {
   on('room:transferHost', d => {
     const room = myRoom();
     if (!needHost(room)) return { ok: false, error: 'Tylko host może przekazać hostowanie.' };
-    if (!room.players.has(d.playerId) || d.playerId === me()) return { ok: false, error: 'Nieprawidłowy gracz.' };
+    if (!room.players.has(d.playerId) || d.playerId === me() || room.players.get(d.playerId).bot) return { ok: false, error: 'Nieprawidłowy gracz.' };
     setHost(room, d.playerId, true);
     broadcast(room);
     return { ok: true };
@@ -347,7 +366,7 @@ io.on('connection', socket => {
       room.tournament.gameNo++;
     } else room.tournament = null;
     const game = new E.GameCore({
-      players: players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar })),
+      players: players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar, bot: !!p.bot })),
       settings: room.settings,
       used: room.used,
       options: {
@@ -406,7 +425,7 @@ io.on('connection', socket => {
 setInterval(() => {
   const now = Date.now();
   for (const room of [...rooms.values()]) {
-    const list = [...room.players.values()];
+    const list = [...room.players.values()].filter(p => !p.bot);
     const connected = list.filter(p => p.connected);
     if (!connected.length) {
       room.emptySince = room.emptySince || now;

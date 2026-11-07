@@ -176,7 +176,7 @@ export function updateTimers(force) {
     const total = +el.dataset.total || 30000;
     const now = el.dataset.clock === 'local' ? Date.now() : serverNow();
     const rem = Math.max(0, dl - now);
-    const secs = Math.ceil(rem / 1000);
+    const secs = Math.min(Math.ceil(rem / 1000), Math.round(total / 1000));
     const pct = Math.max(0, Math.min(100, (rem / total) * 100));
     const num = el.querySelector('.timer-num');
     if (num) num.textContent = secs;

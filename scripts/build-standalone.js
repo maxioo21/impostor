@@ -32,7 +32,7 @@ const LATIN_EXT = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U
 const face = (fam, file, range) => `@font-face{font-family:'${fam}';font-style:normal;font-display:swap;font-weight:100 900;src:url(fonts/${file}) format('woff2');unicode-range:${range}}`;
 const fontFaces = [['Manrope', 'manrope'], ['Unbounded', 'unbounded']].map(([f, k]) => face(f, k + '-latin-wght-normal.woff2', LATIN) + face(f, k + '-latin-ext-wght-normal.woff2', LATIN_EXT)).join('');
 
-const scripts = [read('shared/words.js'), read('shared/engine.js')].map(min);
+const scripts = [read('shared/words.js'), read('shared/associations.js'), read('shared/engine.js'), read('shared/bots.js')].map(min);
 for (const s of [...scripts, bundle]) if (/<\/script/i.test(s)) throw new Error('Kod zawiera </script>');
 
 const html = `<title>IMPOSTOR</title>

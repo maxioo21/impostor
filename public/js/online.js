@@ -209,20 +209,21 @@ function viewLobby() {
           <div class="grow" style="min-width:0">
             <div class="pn ellipsis">${esc(p.name)}</div>
             <div class="row" style="gap:6px;margin-top:3px;flex-wrap:wrap">
-              ${p.isHost ? `<span class="badge host">${icon('crown', 'xs')} Host</span>` : ''}
+              ${p.isHost ? `<span class="badge host">${icon('crown', 'xs')} Host</span>` : ''}${U.botBadge(p)}
               ${p.id === me ? '<span class="badge me">Ty</span>' : ''}
-              ${!p.connected ? '<span class="badge off">offline</span>' : p.isHost ? '' : p.ready ? `<span class="badge ready">${icon('check', 'xs')} Gotowy</span>` : '<span class="badge wait">Czeka</span>'}
+              ${p.bot ? '' : !p.connected ? '<span class="badge off">offline</span>' : p.isHost ? '' : p.ready ? `<span class="badge ready">${icon('check', 'xs')} Gotowy</span>` : '<span class="badge wait">Czeka</span>'}
             </div>
           </div>
           ${host && p.id !== me ? `<button class="icon-btn sm" data-action="oPlayerMenu" data-id="${esc(p.id)}" aria-label="Opcje gracza">${icon('more', 'sm')}</button>` : ''}
         </div>`).join('')}
       </div>
+      ${host ? `<button class="btn ghost block sm" style="margin-top:12px" data-action="oAddBot" ${ps.length >= 20 ? 'disabled' : ''}>🤖 Dodaj bota</button>` : ''}
       ${ps.length < 3 ? `<div class="small muted center" style="margin-top:12px">Wyślij znajomym kod <b style="color:#fff">${esc(room.code)}</b> lub link z zaproszeniem.</div>` : ''}
       ${isLocalHost() && O.lan && O.lan.length ? `<div class="small muted center" style="margin-top:10px">Znajomi w tym samym Wi-Fi wpisują w przeglądarce:<br><b style="color:#fff;font-size:15px">${esc(O.lan[0])}:${esc(O.port || location.port)}</b></div>` : ''}
     </div>
     <div class="card">
       <div class="card-title">${icon('sliders')} Ustawienia gry ${host ? `<button class="btn ghost sm" style="margin-left:auto;min-height:34px" data-action="oSettings">${icon('edit', 'xs')} Zmień</button>` : ''}</div>
-      ${U.settingsSummary(s, ps.length)}
+      ${U.settingsSummary(s, ps.length, ps.some(p => p.bot))}
       ${effImp < s.impostors ? `<div class="small muted" style="margin-top:10px">Przy ${ps.length} graczach liczba Impostorów zostanie ograniczona do ${effImp}.</div>` : ''}
       <div class="small muted" style="margin-top:10px">${E.MODES[s.mode].desc}</div>
     </div>
@@ -376,7 +377,7 @@ act({
       if (!O.room || O.room.phase !== 'lobby') return `<div class="sheet-head"><h2>Ustawienia</h2><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div><p class="muted">Gra już się rozpoczęła.</p>`;
       const s = O.room.settings;
       return `<div class="sheet-head"><h2>Ustawienia gry</h2><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div>
-        ${U.settingsPanel(s, { ctx: 'online', editable: isHost(), playerCount: Math.max(3, O.room.players.length), inRoom: O.room.players.length })}
+        ${U.settingsPanel(s, { ctx: 'online', editable: isHost(), playerCount: Math.max(3, O.room.players.length), inRoom: O.room.players.length, hasBots: O.room.players.some(p => p.bot) })}
         <button class="btn block" style="margin-top:12px" data-action="closeModal">${icon('check')} Gotowe</button>`;
     });
   },
@@ -386,10 +387,12 @@ act({
     if (!p) return;
     showModal(() => `<div class="sheet-head"><div class="row">${avatar(p.avatar, 'md')}<h2>${esc(p.name)}</h2></div><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div>
       <div class="menu-list">
-        <button class="menu-item" data-action="oMakeHost" data-id="${esc(id)}">${icon('crown')} Przekaż hostowanie</button>
-        <button class="menu-item danger" data-action="oKick" data-id="${esc(id)}">${icon('userMinus')} Usuń z pokoju</button>
+        ${p.bot ? '' : `<button class="menu-item" data-action="oMakeHost" data-id="${esc(id)}">${icon('crown')} Przekaż hostowanie</button>`}
+        <button class="menu-item danger" data-action="${p.bot ? 'oRemoveBot' : 'oKick'}" data-id="${esc(id)}">${icon('userMinus')} ${p.bot ? 'Usuń bota' : 'Usuń z pokoju'}</button>
       </div>`);
   },
+  async oAddBot() { const r = await doCall('room:addBot'); if (r.ok) sfx('join'); },
+  async oRemoveBot(el) { closeModal(); doCall('room:kick', { playerId: el.dataset.id }); },
   async oMakeHost(el) { closeModal(); const r = await doCall('room:transferHost', { playerId: el.dataset.id }); if (r.ok) sfx('join'); },
   async oKick(el) {
     const id = el.dataset.id;
@@ -437,7 +440,7 @@ act({
   async oLeave() {
     const room = O.room;
     if (!room) return go('home');
-    const others = room.players.filter(p => p.id !== meId());
+    const others = room.players.filter(p => p.id !== meId() && !p.bot);
     const inGame = room.phase !== 'lobby' && room.phase !== 'results';
     if (isHost() && others.length) {
       showModal(() => `<div class="sheet-head"><h2>Opuścić pokój?</h2><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div>
