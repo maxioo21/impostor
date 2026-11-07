@@ -1,6 +1,26 @@
 # IMPOSTOR 🎭
 
-Gra towarzyska w skojarzenia: wszyscy znają tajne słowo — prawie wszyscy. Gra działa w przeglądarce na telefonach i komputerach (można ją też „zainstalować” jako aplikację PWA), online lub na jednym telefonie.
+Gra towarzyska w skojarzenia: wszyscy znają tajne słowo — prawie wszyscy.
+
+## ⬇️ Pobierz grę
+
+| | Plik | |
+|---|---|---|
+| 🪟 **Windows 10/11** | [**IMPOSTOR-Setup.exe**](https://github.com/maxioo21/impostor/raw/main/pobierz/IMPOSTOR-Setup.exe) (23 MB) | instalator – ikona na pulpicie i w menu Start |
+| 🤖 **Android** | [**IMPOSTOR.apk**](https://github.com/maxioo21/impostor/raw/main/pobierz/IMPOSTOR.apk) (0,3 MB) | działa bez internetu, łączy się z grą na komputerze przez Wi-Fi |
+| 🌐 **Przeglądarka** | [Zagraj w przeglądarce](https://claude.ai/artifact/4jNtWVqomQiPMwTdTvoCuL) | tryb jednego telefonu |
+
+**Windows:** uruchom pobrany plik. Jeśli pojawi się „System Windows ochronił ten komputer” → *Więcej informacji* → *Uruchom mimo to*. Gdy zapora zapyta o dostęp → zaznacz *Sieci prywatne* → *Zezwalaj* (potrzebne do gry na telefonach przez Wi-Fi).
+
+**Android:** dotknij pobranego pliku, zezwól na instalację z tego źródła, a przy ostrzeżeniu Play Protect wybierz *Zainstaluj mimo to*.
+
+**Gra na kilku telefonach:** uruchom grę na komputerze → *Graj* → *Gra online*. W lobby zobaczysz adres (np. `192.168.1.15:3000`) – znajomi w tym samym Wi-Fi wpisują go w przeglądarce albo w aplikacji na Androida (*Gra online przez Wi-Fi*).
+
+---
+
+## O projekcie
+
+Gra działa w przeglądarce na telefonach i komputerach (można ją też „zainstalować” jako aplikację PWA), online lub na jednym telefonie.
 
 ## Uruchomienie
 
