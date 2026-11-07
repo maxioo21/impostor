@@ -9,6 +9,8 @@ import { openLocalSetup, hasLocalSave, resumeLocal } from './local.js';
 const E = window.ImpostorEngine;
 const W = window.ImpostorWords;
 const { icon, avatar } = U;
+const SA = !!window.IMPOSTOR_STANDALONE;
+const APP = !!window.IMPOSTOR_APP;
 
 /* ================= MENU GŁÓWNE ================= */
 defineScreen('home', () => {
@@ -31,7 +33,7 @@ defineScreen('home', () => {
   ${roomBanner}${localBanner}
   <div class="stack" style="gap:12px;margin-top:6px">
     <button class="btn block xl pulse" data-action="openPlay">${icon('play')} Graj</button>
-    <button class="btn red block md" data-action="goJoin">${icon('login')} Dołącz do pokoju</button>
+    ${SA ? '' : `<button class="btn red block md" data-action="goJoin">${icon('login')} Dołącz do pokoju</button>`}
     <div class="btn-grid">
       <button class="tile-btn" data-action="goProfile">${icon('sliders')} Ustawienia</button>
       <button class="tile-btn" data-action="goStats">${icon('chart')} Statystyki</button>
@@ -39,7 +41,7 @@ defineScreen('home', () => {
   </div>
   <div class="mt-auto footer-note" style="padding-top:18px">
     <span>${icon('trophy', 'xs')} Rozegrane gry: <b>${games}</b></span>
-    <span><i class="status-dot ${O.authed ? 'on' : ''}"></i>${O.authed ? 'Serwer online' : O.unavailable ? 'Tryb offline' : 'Łączenie…'}</span>
+    <span><i class="status-dot ${O.authed || SA ? 'on' : ''}"></i>${SA ? 'Gra na jednym telefonie' : O.authed ? 'Serwer online' : O.unavailable ? 'Tryb offline' : 'Łączenie…'}</span>
     <span>${W.countWords()} słów w bazie</span>
   </div>`;
 });
@@ -73,13 +75,33 @@ act({
   openPlay() {
     showModal(() => `<div class="sheet-head"><h2>Wybierz tryb rozgrywki</h2><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div>
       <div class="stack">
-        <button class="choice-card" data-action="playOnline"><span class="cc-ic">${icon('globe')}</span><span class="grow"><span class="cc-t">Gra online</span><br><span class="cc-d">Stwórz pokój, wyślij znajomym kod i grajcie na swoich telefonach.</span></span></button>
+        ${SA ? '' : `<button class="choice-card" data-action="playOnline"><span class="cc-ic">${icon('globe')}</span><span class="grow"><span class="cc-t">Gra online</span><br><span class="cc-d">Stwórz pokój, wyślij znajomym kod i grajcie na swoich telefonach.</span></span></button>`}
         <button class="choice-card" data-action="playLocal"><span class="cc-ic red">${icon('phone')}</span><span class="grow"><span class="cc-t">Jeden telefon</span><br><span class="cc-d">Przekazujcie sobie telefon po kolei. Działa bez internetu.</span></span></button>
-        <button class="choice-card" data-action="playJoin"><span class="cc-ic">${icon('login')}</span><span class="grow"><span class="cc-t">Mam kod pokoju</span><br><span class="cc-d">Dołącz do gry stworzonej przez znajomego.</span></span></button>
+        ${APP ? `<button class="choice-card" data-action="playLan"><span class="cc-ic">${icon('globe')}</span><span class="grow"><span class="cc-t">Gra online przez Wi-Fi</span><br><span class="cc-d">Połącz się z grą uruchomioną na komputerze. Każdy gra na swoim telefonie.</span></span></button>` : ''}
+        ${SA ? '' : `<button class="choice-card" data-action="playJoin"><span class="cc-ic">${icon('login')}</span><span class="grow"><span class="cc-t">Mam kod pokoju</span><br><span class="cc-d">Dołącz do gry stworzonej przez znajomego.</span></span></button>`}
+        ${SA && !APP ? `<p class="small muted" style="margin:0">Ta wersja działa na jednym urządzeniu. Grę online, w której każdy gra na swoim telefonie, uruchomisz z paczki na komputer.</p>` : ''}
       </div>`);
   },
   playOnline() { closeModal(); ensureNick(() => createRoom()); },
   playLocal() { closeModal(); openLocalSetup(); },
+  playLan() {
+    closeModal();
+    setTimeout(() => showModal(() => `<div class="sheet-head"><h2>Gra online przez Wi-Fi</h2><button class="icon-btn sm" data-action="closeModal">${icon('x', 'sm')}</button></div>
+      <div class="stack">
+        <p class="small muted" style="margin:0">Na komputerze uruchom grę z paczki IMPOSTOR (plik GRAJ.bat). W czarnym oknie zobaczysz adres dla telefonów, np. <b style="color:#fff">192.168.1.15:3000</b>. Telefon musi być w tym samym Wi-Fi.</p>
+        <div class="field"><label for="lan-addr">Adres gry</label>
+          <input class="input" id="lan-addr" value="${esc(store.get('lanAddr', ''))}" placeholder="192.168.1.15:3000" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" data-enter="lanGo" data-autofocus></div>
+        <button class="btn block" data-action="lanGo">${icon('login')} Połącz</button>
+      </div>`), 220);
+  },
+  lanGo() {
+    let v = (document.getElementById('lan-addr').value || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    if (!/^[a-z0-9.-]+(:\d{1,5})?$/i.test(v)) return toast('Wpisz adres w formacie 192.168.1.15:3000', 'error');
+    if (!/:\d+$/.test(v)) v += ':3000';
+    store.set('lanAddr', v);
+    toast('Łączenie z ' + v + '…');
+    location.href = 'http://' + v + '/';
+  },
   playJoin() { closeModal(); ensureNick(() => go('join', {})); }
 });
 
@@ -241,7 +263,7 @@ defineScreen('rules', () => `
   </div>`);
 
 /* ================= STATYSTYKI ================= */
-const statsState = { tab: 'me', rankMode: 'online', ranking: null, rankingErr: null, loading: false, compare: [] };
+const statsState = { tab: 'me', rankMode: SA ? 'local' : 'online', ranking: null, rankingErr: null, loading: false, compare: [] };
 
 function statTiles(s) {
   const wr = s.games ? Math.round((s.wins / s.games) * 100) : 0;
@@ -294,8 +316,8 @@ defineScreen('stats', p => {
     const online = O.stats ? Object.assign(emptyLocalStats(), O.stats) : null;
     const local = Object.assign(emptyLocalStats(), store.get('myLocalStats', {}));
     body = `
-      <div class="card"><div class="card-title">${icon('globe')} Statystyki online</div>
-        ${online ? statTiles(online) : `<div class="empty-state">${icon('wifiOff')}<div>${O.authed ? 'Ładowanie…' : 'Połącz się z internetem, aby zobaczyć statystyki online.'}</div></div>`}</div>
+      ${SA ? '' : `<div class="card"><div class="card-title">${icon('globe')} Statystyki online</div>
+        ${online ? statTiles(online) : `<div class="empty-state">${icon('wifiOff')}<div>${O.authed ? 'Ładowanie…' : 'Połącz się z internetem, aby zobaczyć statystyki online.'}</div></div>`}</div>`}
       <div class="card"><div class="card-title">${icon('phone')} Na tym urządzeniu</div>
         <p class="small muted" style="margin-top:0">Gry na jednym telefonie, rozegrane pod nickiem <b>${esc(profile.name || '—')}</b>.</p>
         ${statTiles(local)}</div>`;
@@ -307,7 +329,7 @@ defineScreen('stats', p => {
     if (mode === 'online' && !statsState.ranking && !statsState.loading && !statsState.rankingErr && O.authed) setTimeout(loadRanking);
     const sel = statsState.compare;
     body = `
-      <div class="seg"><button class="${mode === 'online' ? 'active' : ''}" data-action="rankMode" data-mode="online">${icon('globe', 'sm')} Globalny</button><button class="${mode === 'local' ? 'active' : ''}" data-action="rankMode" data-mode="local">${icon('phone', 'sm')} Ten telefon</button></div>
+      ${SA ? '' : `<div class="seg"><button class="${mode === 'online' ? 'active' : ''}" data-action="rankMode" data-mode="online">${icon('globe', 'sm')} Globalny</button><button class="${mode === 'local' ? 'active' : ''}" data-action="rankMode" data-mode="local">${icon('phone', 'sm')} Ten telefon</button></div>`}
       <p class="small muted center" style="margin:0">Dotknij dwóch graczy, aby porównać ich wyniki.</p>
       ${mode === 'online' && statsState.ranking && statsState.ranking.myRank ? `<div class="chip" style="align-self:center">${icon('crown')} Twoja pozycja: #${statsState.ranking.myRank} z ${statsState.ranking.total}</div>` : ''}
       <div class="stack" style="gap:8px">

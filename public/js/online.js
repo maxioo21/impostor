@@ -50,6 +50,7 @@ async function hello() {
   if (r.token) { O.ident = { playerId: r.playerId, token: r.token }; store.set('ident', O.ident); }
   O.authed = true;
   O.stats = r.stats;
+  O.lan = r.lan || []; O.port = r.port;
   O.roomCode = r.roomCode;
   connBanner();
   if (!r.roomCode && O.room) {
@@ -140,7 +141,11 @@ export function applyOnlineSettings(patch) {
 export function pushProfile() { if (O.authed) call('profile:update', { name: profile.name, avatar: profile.avatar }); }
 export const fetchStats = () => call('stats:get');
 export const fetchRanking = () => call('ranking:get');
-export function inviteLink(code) { return `${location.origin}/?room=${code}`; }
+export function isLocalHost() { return ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname); }
+export function inviteLink(code) {
+  if (isLocalHost() && O.lan && O.lan.length) return `http://${O.lan[0]}:${O.port || location.port}/?room=${code}`;
+  return `${location.origin}/?room=${code}`;
+}
 
 /* ---------- widoki ---------- */
 function players() { return O.room ? O.room.players : []; }
@@ -213,6 +218,7 @@ function viewLobby() {
         </div>`).join('')}
       </div>
       ${ps.length < 3 ? `<div class="small muted center" style="margin-top:12px">Wyślij znajomym kod <b style="color:#fff">${esc(room.code)}</b> lub link z zaproszeniem.</div>` : ''}
+      ${isLocalHost() && O.lan && O.lan.length ? `<div class="small muted center" style="margin-top:10px">Znajomi w tym samym Wi-Fi wpisują w przeglądarce:<br><b style="color:#fff;font-size:15px">${esc(O.lan[0])}:${esc(O.port || location.port)}</b></div>` : ''}
     </div>
     <div class="card">
       <div class="card-title">${icon('sliders')} Ustawienia gry ${host ? `<button class="btn ghost sm" style="margin-left:auto;min-height:34px" data-action="oSettings">${icon('edit', 'xs')} Zmień</button>` : ''}</div>

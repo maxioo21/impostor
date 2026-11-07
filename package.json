@@ -1,19 +1,28 @@
 {
   "name": "impostor",
   "version": "1.0.0",
-  "description": "IMPOSTOR – gra towarzyska online i na jednym telefonie",
+  "description": "IMPOSTOR \u2013 gra towarzyska online i na jednym telefonie",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/engine.test.js && node test/online.test.js"
+    "test": "node test/engine.test.js && node test/online.test.js",
+    "build:standalone": "node scripts/build-standalone.js",
+    "build:android": "bash android/build.sh",
+    "build:desktop": "node desktop/build.js",
+    "build:installer": "node desktop/build.js && makensis -V2 desktop/installer.nsi"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "MIT",
   "dependencies": {
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6",
+    "resedit": "^2.0.3",
     "socket.io-client": "^4.8.1"
   }
 }

@@ -28,9 +28,11 @@ function play(mode, n, imps, strategy) {
     if (g.roles[id] === 'undercover') { assert.equal(v.kind, 'civilian'); assert.notEqual(v.word, g.word.word); }
   }
   // public state must not contain secret word or roles
-  const pub = JSON.stringify(g.publicState());
-  assert(!pub.includes('"roles"'));
-  assert(!pub.toLowerCase().includes('"' + g.word.word.toLowerCase() + '"'));
+  const pubObj = g.publicState();
+  assert(!('roles' in pubObj));
+  const values = [];
+  (function walk(o) { if (o && typeof o === 'object') Object.values(o).forEach(walk); else if (typeof o === 'string') values.push(o.toLowerCase()); })(pubObj);
+  assert(!values.includes(g.word.word.toLowerCase()), 'secret word leaked into public state');
   for (const p of players) g.confirmReveal(p.id);
   assert.equal(g.phase, 'answers');
   let guard = 0;

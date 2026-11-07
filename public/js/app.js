@@ -1,5 +1,5 @@
 /* IMPOSTOR – punkt wejścia aplikacji. */
-import { S, store, act, go, rerender, refreshModal, closeModal, toast } from './core.js';
+import { S, store, act, actions, go, rerender, refreshModal, closeModal, isModalOpen, toast } from './core.js';
 import './screens.js';
 import { O, initOnline, applyOnlineSettings } from './online.js';
 import { L, applyLocalSettings } from './local.js';
@@ -91,8 +91,21 @@ window.addEventListener('popstate', () => { closeModal(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && O.socket && !O.socket.connected) O.socket.connect();
 });
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+if ('serviceWorker' in navigator && location.protocol !== 'file:' && !window.IMPOSTOR_STANDALONE) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 }
+/* Przycisk „Wstecz” w aplikacji na Androida */
+window.impostorBack = () => {
+  if (isModalOpen()) { closeModal(); return true; }
+  if (S.screen === 'home' || S.screen === 'boot-wait') return false;
+  if (S.screen === 'local' && actions.lExit) { actions.lExit(); return true; }
+  if (S.screen === 'online' && actions.oLeave && O.room) { actions.oLeave(); return true; }
+  go('home');
+  return true;
+};
 void store; void rerender; void refreshModal;
 boot();
+if (location.hash === '#conn-error') {
+  history.replaceState(null, '', location.pathname);
+  setTimeout(() => toast('Nie udało się połączyć z grą na komputerze. Sprawdź adres i czy telefon jest w tym samym Wi-Fi.', 'error'), 600);
+}

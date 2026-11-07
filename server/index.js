@@ -30,8 +30,8 @@ app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data:",
     "connect-src 'self' ws: wss:",
     "base-uri 'none'",
@@ -39,18 +39,45 @@ app.use((req, res, next) => {
   ].join('; '));
   next();
 });
-const staticOpts = {
-  setHeaders(res, file) {
-    if (file.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
-    else res.setHeader('Cache-Control', 'public, max-age=300');
-  }
-};
-app.use('/shared', express.static(path.join(__dirname, '..', 'shared'), staticOpts));
-app.use(express.static(path.join(__dirname, '..', 'public'), staticOpts));
-app.get('/health', (req, res) => res.json({ ok: true, rooms: rooms.size }));
+/* Pliki gry: z dysku albo – w aplikacji na komputer (IMPOSTOR.exe) – z zasobów wbudowanych w plik */
+const sea = (() => { try { const s = require('node:sea'); return s.isSea() ? s : null; } catch { return null; } })();
+const MIME = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml',
+  woff2: 'font/woff2', webmanifest: 'application/manifest+json', json: 'application/json', png: 'image/png' };
+if (sea) {
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    let p = decodeURIComponent(req.path);
+    if (p.includes('..')) return next();
+    if (p === '/') p = '/index.html';
+    const key = p.startsWith('/shared/') ? p.slice(1) : p === '/vendor/socket.io.min.js' ? 'vendor/socket.io.min.js' : 'public' + p;
+    let buf;
+    try { buf = Buffer.from(sea.getAsset(key)); } catch { return next(); }
+    res.setHeader('Content-Type', MIME[p.split('.').pop()] || 'application/octet-stream');
+    res.setHeader('Cache-Control', p.endsWith('.html') ? 'no-cache' : 'public, max-age=300');
+    res.end(req.method === 'HEAD' ? undefined : buf);
+  });
+} else {
+  const staticOpts = {
+    setHeaders(res, file) {
+      if (file.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      else res.setHeader('Cache-Control', 'public, max-age=300');
+    }
+  };
+  app.get('/vendor/socket.io.min.js', (req, res) => res.sendFile(path.join(path.dirname(require.resolve('socket.io')), '..', 'client-dist', 'socket.io.min.js')));
+  app.use('/shared', express.static(path.join(__dirname, '..', 'shared'), staticOpts));
+  app.use(express.static(path.join(__dirname, '..', 'public'), staticOpts));
+}
+app.get('/health', (req, res) => res.json({ ok: true, app: 'impostor', rooms: rooms.size }));
 
 const server = http.createServer(app);
-const io = new Server(server, { pingInterval: 10000, pingTimeout: 8000, maxHttpBufferSize: 64 * 1024 });
+const io = new Server(server, { pingInterval: 10000, pingTimeout: 8000, maxHttpBufferSize: 64 * 1024, serveClient: false });
+let localClients = 0;
+io.on('connection', socket => {
+  const a = String(socket.handshake.address || '');
+  if (!(a === '::1' || a.startsWith('127.') || a === '::ffff:127.0.0.1')) return;
+  localClients++;
+  socket.on('disconnect', () => { localClients--; });
+});
 
 /* ------------------------------------------------------------------ */
 const rooms = new Map();       // code -> room
@@ -209,7 +236,8 @@ io.on('connection', socket => {
       if (!gameActive(room)) { p.avatar = avatar; }
       broadcast(room);
     }
-    return { ok: true, playerId: id, token, roomCode: room ? room.code : null, stats: store.statsOf(id) };
+    const addr = server.address();
+    return { ok: true, playerId: id, token, roomCode: room ? room.code : null, stats: store.statsOf(id), lan: lanAddresses(), port: addr && addr.port };
   });
 
   on('profile:update', d => {
@@ -394,7 +422,40 @@ setInterval(() => {
   }
 }, 5000);
 
-if (require.main === module) {
-  server.listen(PORT, () => console.log(`IMPOSTOR działa na http://localhost:${PORT}`));
+function lanAddresses() {
+  const out = [];
+  for (const list of Object.values(require('os').networkInterfaces())) {
+    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) out.push(a.address);
+  }
+  return out;
 }
-module.exports = { server, io, rooms };
+
+function start(port, triesLeft, onReady) {
+  server.once('error', err => {
+    if (err.code === 'EADDRINUSE' && triesLeft > 0 && !process.env.PORT) return start(port + 1, triesLeft - 1, onReady);
+    console.error('Nie udało się uruchomić serwera:', err.message);
+    process.exit(1);
+  });
+  server.removeAllListeners('listening');
+  server.listen(port, () => {
+    port = server.address().port;
+    const url = `http://localhost:${port}`;
+    console.log('');
+    console.log('  ==============================================');
+    console.log('   IMPOSTOR działa!');
+    console.log(`   Na tym komputerze:   ${url}`);
+    for (const ip of lanAddresses()) console.log(`   Telefony w tym Wi-Fi: http://${ip}:${port}`);
+    console.log('   Aby zakończyć grę, zamknij to okno.');
+    console.log('  ==============================================');
+    console.log('');
+    if (onReady) onReady(port);
+    if (process.env.IMPOSTOR_OPEN_BROWSER) {
+      const { exec } = require('child_process');
+      const cmd = process.platform === 'win32' ? `start "" "${url}"` : process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
+      exec(cmd, () => {});
+    }
+  });
+}
+
+if (require.main === module) start(PORT, 10);
+module.exports = { server, io, rooms, start, lanAddresses, localClientCount: () => localClients };

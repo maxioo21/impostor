@@ -25,6 +25,13 @@ Gra działa pod adresem `http://localhost:3000`. Aby grać ze znajomymi przez in
 
 Na darmowym planie serwer zasypia po ok. 15 min bez ruchu (pierwsze wejście trwa wtedy ~30–60 s), a statystyki online zerują się przy każdym ponownym wdrożeniu. Dołączony `Dockerfile` pozwala wdrożyć grę także na Railway, Fly.io lub własnym serwerze.
 
+### Aplikacje do pobrania
+
+- **Windows – instalator:** `npm run build:installer` → `dist/IMPOSTOR-Setup.exe` (skróty na pulpicie i w menu Start, odinstalowanie z Ustawień). Wymaga `makensis` (pakiet `nsis`).
+- **Windows – jeden plik:** `npm run build:desktop` → `dist/IMPOSTOR.exe` (gra otwiera się we własnym oknie Edge/Chrome).
+- **Android:** `npm run build:android` → `dist/IMPOSTOR.apk` (wymaga pakietów `android-sdk-platform-23 aapt apksigner dalvik-exchange zipalign` i JDK).
+- **Jeden plik HTML (tryb jednego telefonu):** `npm run build:standalone` → `dist/impostor-standalone.html`.
+
 Testy (silnik gry + pełna rozgrywka online na 4 klientach):
 
 ```bash

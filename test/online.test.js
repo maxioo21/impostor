@@ -71,27 +71,29 @@ async function until(fn, ms = 4000) { const t = Date.now(); while (!fn()) { if (
   }
   await until(() => host.state.phase === 'lastchance');
   assert(imp.priv.mustGuess);
-  assert.equal((await host.call('game:guess', { text: word })).ok, false);
+  assert.equal((await cs.find(c => c !== imp).call('game:guess', { text: word })).ok, false);
   // reconnect in the middle of last chance
   imp.s.close();
   const imp2 = client(imp.name, 0, port);
   const hr = await imp2.hello({ playerId: imp.id, token: imp.token });
   assert.equal(hr.roomCode, code, 'resume');
   await until(() => imp2.priv && imp2.priv.mustGuess);
+  const live = cs.map(c => (c === imp ? imp2 : c));
+  const H = live[0], R = live.slice(1);
   assert((await imp2.call('game:guess', { text: 'zupełnie nie to' })).ok);
-  await until(() => host.state.phase === 'results');
-  const res = host.state.game.results;
+  await until(() => H.state.phase === 'results');
+  const res = H.state.game.results;
   assert.equal(res.winner, 'civilians');
   assert.equal(res.correctVoters.length, 3);
-  const stats = await host.call('stats:get');
+  const stats = await live.find(c => c !== imp2).call('stats:get');
   assert.equal(stats.stats.games, 1); assert.equal(stats.stats.wins, 1);
-  const rk = await host.call('ranking:get');
+  const rk = await H.call('ranking:get');
   assert(rk.list.length >= 4);
-  assert((await host.call('room:playAgain')).ok);
-  await until(() => host.state.phase === 'lobby');
+  assert((await H.call('room:playAgain')).ok);
+  await until(() => H.state.phase === 'lobby');
   // host leaves -> transfer
-  await host.call('room:leave', { newHostId: rest[1].id });
-  await until(() => rest[0].state.hostId === rest[1].id);
+  await H.call('room:leave', { newHostId: R[1].id });
+  await until(() => R[0].state.hostId === R[1].id);
   console.log('online OK');
   for (const c of [...cs, imp2]) c.s.close();
   server.close();
